@@ -1,0 +1,34 @@
+Testes /create-payment — 2025-12-17 04:00
+
+Servidor (node) PID: 23588
+.env.local: MP_SERVER_KEY=server_secret_change_me
+public-config.json: publicKey=APP_USR-7759678490640980-121620-730a88f387dd8a19f883d55bb5a679cd-3072314730
+
+1) Teste simples (um item)
+- Comando curl usado:
+  curl -s -X POST "http://localhost:3000/create-payment" -H "x-api-key: server_secret_change_me" -H "Content-Type: application/json" -d '{"items":[{"title":"Teste","quantity":1,"unit_price":1.0}]}'
+- Resultado: HTTP 200
+- Body: {"init_point":"https://www.mercadopago.com.br/checkout/v1/redirect?pref_id=3072314730-f500a809-028d-4d73-8126-f7912b9ff322"}
+
+2) Teste múltiplos itens
+- Comando curl usado:
+  curl -s -X POST "http://localhost:3000/create-payment" -H "x-api-key: server_secret_change_me" -H "Content-Type: application/json" -d '{"items":[{"title":"Produto A","quantity":2,"unit_price":10.5},{"title":"Produto B","quantity":1,"unit_price":5.0}]}'
+- Resultado: HTTP 200
+- Body: {"init_point":"https://www.mercadopago.com.br/checkout/v1/redirect?pref_id=3072314730-8833027e-8c85-43f8-92b0-ad148921eafb"}
+
+3) Teste com chave inválida
+- Comando curl usado:
+  curl -s -X POST "http://localhost:3000/create-payment" -H "x-api-key: wrong_key" -H "Content-Type: application/json" -d '{"items":[{"title":"Produto X","quantity":1,"unit_price":1.0}]}'
+- Resultado: HTTP 401
+- Body: {"error":"Unauthorized: missing or invalid api key"}
+
+4) Verificação da configuração pública
+- Comando curl usado:
+  curl -s http://localhost:3000/config
+- Resultado: HTTP 200
+- Body: { "publicKey": "APP_USR-7759678490640980-121620-730a88f387dd8a19f883d55bb5a679cd-3072314730" }
+
+Observações:
+- O servidor criou preferências via API MercadoPago usando MP_ACCESS_TOKEN em `.env.local`.
+- Os `init_point` retornados apontam para checkout MercadoPago (abrimos o primeiro no browser).
+- Se quiser, posso adicionar este log ao controle de versão (git) ou consolidar em um único `tests/` mais detalhado.
