@@ -22,13 +22,15 @@ if (useRedis) {
   redisClient.connect().then(() => console.log('Connected to Redis')).catch((e) => console.error('Redis connect failed', e));
 }
 
-const sessionTokens = new Map(); // token -> expiresAt (ms) — usado apenas quando não há Redis
+// sessionTokens: token -> { email, expiresAt }
+const sessionTokens = new Map(); // usado quando não há Redis
+const users = new Map(); // email -> { passwordHash }
 // limpa tokens expirados a cada minuto (apenas para fallback em memória)
 setInterval(() => {
   if (useRedis) return;
   const now = Date.now();
-  for (const [t, exp] of sessionTokens) {
-    if (exp < now) sessionTokens.delete(t);
+  for (const [t, v] of sessionTokens) {
+    if (!v || v.expiresAt < now) sessionTokens.delete(t);
   }
 }, 60 * 1000);
 
@@ -53,12 +55,26 @@ app.get('/config', (req, res) => {
 // - Requests da origem `allowedOrigin` são permitidas sem chave
 // - Outras origens precisam enviar `x-api-key` com MP_SERVER_KEY
 function requireAuth(req, res, next) {
-  // Sempre exigir chave do servidor via header `x-api-key` ou query `?api_key=`.
-  const key = req.get('x-api-key') || req.query.api_key;
-  if (!key || key !== process.env.MP_SERVER_KEY) {
-    return res.status(401).json({ error: 'Unauthorized: missing or invalid api key' });
+  // Permite autenticação via session token Bearer ou via x-api-key (server key)
+  const auth = req.get('authorization');
+  if (auth && auth.toLowerCase().startsWith('bearer ')) {
+    const token = auth.slice(7).trim();
+    if (useRedis) {
+      // Redis-backed sessions not implemented in this demo path
+    } else {
+      const rec = sessionTokens.get(token);
+      if (rec && rec.expiresAt > Date.now()) {
+        req.user = { email: rec.email };
+        return next();
+      }
+    }
   }
-  return next();
+
+  // fallback: accept server key for API clients
+  const key = req.get('x-api-key') || req.query.api_key;
+  if (key && key === process.env.MP_SERVER_KEY) return next();
+
+  return res.status(401).json({ error: 'Unauthorized: missing or invalid credentials' });
 }
 
 app.post('/create-payment', requireAuth, async (req, res) => {
@@ -129,6 +145,44 @@ app.post('/create-payment', requireAuth, async (req, res) => {
     return res.status(500).json({ error: error.message });
   }
 });
+
+  // Registro simples de usuário (demo). Retorna token de sessão.
+  app.post('/register', (req, res) => {
+    const { email, password } = req.body || {};
+    if (!email || !password) return res.status(400).json({ error: 'email and password required' });
+    const key = email.toLowerCase();
+    if (users.has(key)) return res.status(409).json({ error: 'user exists' });
+    const hash = require('crypto').createHash('sha256').update(password).digest('hex');
+    users.set(key, { passwordHash: hash });
+    const token = randomUUID();
+    const expiresAt = Date.now() + 24 * 60 * 60 * 1000; // 24h
+    sessionTokens.set(token, { email: key, expiresAt });
+    return res.status(201).json({ token, expiresAt });
+  });
+
+  app.post('/login', (req, res) => {
+    const { email, password } = req.body || {};
+    if (!email || !password) return res.status(400).json({ error: 'email and password required' });
+    const key = email.toLowerCase();
+    const rec = users.get(key);
+    if (!rec) return res.status(401).json({ error: 'invalid credentials' });
+    const hash = require('crypto').createHash('sha256').update(password).digest('hex');
+    if (hash !== rec.passwordHash) return res.status(401).json({ error: 'invalid credentials' });
+    const token = randomUUID();
+    const expiresAt = Date.now() + 24 * 60 * 60 * 1000;
+    sessionTokens.set(token, { email: key, expiresAt });
+    return res.json({ token, expiresAt });
+  });
+
+  app.get('/me', (req, res) => {
+    // retorna informação do usuário autenticado
+    const auth = req.get('authorization');
+    if (!auth || !auth.toLowerCase().startsWith('bearer ')) return res.status(401).json({ error: 'not authenticated' });
+    const token = auth.slice(7).trim();
+    const rec = sessionTokens.get(token);
+    if (!rec || rec.expiresAt < Date.now()) return res.status(401).json({ error: 'not authenticated' });
+    return res.json({ email: rec.email });
+  });
 
 const port = process.env.PORT || 3000;
 app.listen(port, () => console.log(`Servidor rodando em http://localhost:${port}`));
