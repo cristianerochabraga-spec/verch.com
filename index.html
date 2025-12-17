@@ -106,7 +106,7 @@
 
     async function createPayment(){
       const token = localStorage.getItem('sessionToken');
-      const body = { items: [{ title: 'Manual Lucrativo — Vendas em 7 Dias', quantity: 1, currency_id: 'BRL', unit_price: 5.0 }], method: 'pix' };
+      const body = { items: [{ title: 'Manual Lucrativo — Vendas em 7 Dias', quantity: 1, currency_id: 'BRL', unit_price: 5.0 }] };
       const headers = { 'Content-Type': 'application/json' };
       if (token) headers['Authorization'] = 'Bearer ' + token;
       const res = await fetch('/create-payment', { method: 'POST', headers, body: JSON.stringify(body) });
