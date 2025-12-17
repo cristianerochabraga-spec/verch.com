@@ -1,0 +1,38 @@
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  deploy:
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Prepare site directory
+        run: |
+          mkdir -p site
+          # copy main static files (ignore missing files)
+          cp index.html site/ 2>/dev/null || true
+          cp public-config.json site/ 2>/dev/null || true
+          # copy common static folders if present
+          cp -r public site 2>/dev/null || true
+          cp -r assets site 2>/dev/null || true
+          cp -r static site 2>/dev/null || true
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v3
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v1
+        with:
+          path: ./site
+
+      - name: Deploy to GitHub Pages
+        uses: actions/deploy-pages@v1
